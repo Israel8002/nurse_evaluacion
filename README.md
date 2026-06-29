@@ -2,12 +2,6 @@
 
 ## ISSSTECALI
 
-<p align="center">
-  <img src="banner.png" alt="Sistema Web de Evaluación Anual" width="100%">
-</p>
-
----
-
 > **Sistema institucional para la evaluación anual del personal de enfermería**
 
 Digitalización completa del proceso de evaluación, generación automática de folios institucionales, cálculo de calificaciones y creación de PDFs idénticos al formato oficial de ISSSTECALI.
