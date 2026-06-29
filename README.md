@@ -2,12 +2,9 @@
 
 ## ISSSTECALI
 
-![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)
-![MongoDB](https://img.shields.io/badge/MongoDB-Database-green?style=for-the-badge&logo=mongodb)
-![React](https://img.shields.io/badge/React-Frontend-61DAFB?style=for-the-badge&logo=react&logoColor=black)
-![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-UI-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
-![PDF](https://img.shields.io/badge/PDF-Automático-red?style=for-the-badge&logo=adobeacrobatreader)
-![Estado](https://img.shields.io/badge/Estado-En%20Desarrollo-orange?style=for-the-badge)
+<p align="center">
+  <img src="./Sistema%20Evaluacion%20Anual.png" alt="Sistema Web de Evaluación Anual" width="100%">
+</p>
 
 ---
 
