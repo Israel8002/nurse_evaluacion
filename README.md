@@ -3,7 +3,7 @@
 ## ISSSTECALI
 
 <p align="center">
-  <img src="./Sistema%20Evaluacion%20Anual.png" alt="Sistema Web de Evaluación Anual" width="100%">
+  <img src="banner.png" alt="Sistema Web de Evaluación Anual" width="100%">
 </p>
 
 ---
