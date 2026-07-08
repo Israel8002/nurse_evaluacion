@@ -3,7 +3,7 @@
 <p align="center">
   <img src="banner.png" alt="SWE Sistema de Evaluacion Anual" width="100%" />
 </p>
-<div align="center">
+
 
 ## ISSSTECALI
 
