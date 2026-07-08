@@ -1,5 +1,10 @@
 # 🏥 Sistema Web de Evaluación Anual del Personal de Enfermería
 
+<p align="center">
+  <img src="banner.png" alt="SWE Sistema de Evaluacion Anual" width="100%" />
+</p>
+<div align="center">
+
 ## ISSSTECALI
 
 > **Sistema institucional para la evaluación anual del personal de enfermería**
