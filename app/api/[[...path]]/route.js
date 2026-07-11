@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { NextResponse } from 'next/server'
 import { generateEvaluationPDF } from '@/lib/pdfGenerator'
 import { computeGeneral, SECTIONS } from '@/lib/evalConfig'
+import crypto from 'crypto'
 
 // MongoDB connection
 let client
@@ -78,6 +79,13 @@ function clean(obj) {
   return rest
 }
 
+async function getAuthenticatedUser(db, request) {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null
+  const userId = authHeader.replace('Bearer ', '')
+  return await db.collection('users').findOne({ id: userId })
+}
+
 export async function OPTIONS() {
   return handleCORS(new NextResponse(null, { status: 200 }))
 }
@@ -99,6 +107,10 @@ async function handleRoute(request, { params }) {
       return json(await getConfig(db))
     }
     if (route === '/config' && (method === 'PUT' || method === 'POST')) {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
       const body = await request.json()
       const { _id, id, ...updates } = body
       await db.collection('config').updateOne(
@@ -139,6 +151,10 @@ async function handleRoute(request, { params }) {
       return json(clean(emp))
     }
     if (route.startsWith('/employees/') && method === 'DELETE') {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
       const id = path[1]
       await db.collection('employees').deleteOne({ id })
       return json({ success: true })
@@ -213,6 +229,10 @@ async function handleRoute(request, { params }) {
       return json(clean(ev))
     }
     if (route.startsWith('/evaluations/') && path.length === 2 && method === 'DELETE') {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
       const id = path[1]
       await db.collection('evaluations').deleteOne({ id })
       return json({ success: true })
@@ -280,6 +300,133 @@ async function handleRoute(request, { params }) {
         avgGeneral: countGeneral ? Number((sumGeneral / countGeneral).toFixed(1)) : null,
         recent,
       })
+    }
+
+    // ---------------- AUTH / USERS ----------------
+    if (route === '/auth/status' && method === 'GET') {
+      const userCount = await db.collection('users').countDocuments()
+      const user = await getAuthenticatedUser(db, request)
+      return json({
+        registered: userCount > 0,
+        user: user ? { id: user.id, username: user.username, nombre: user.nombre, role: user.role } : null
+      })
+    }
+
+    if (route === '/auth/register-initial' && method === 'POST') {
+      const userCount = await db.collection('users').countDocuments()
+      if (userCount > 0) {
+        return json({ error: 'El registro inicial ya fue completado' }, 400)
+      }
+      const body = await request.json()
+      if (!body.numeroEmpleado || !body.nombre || !body.correo || !body.celular || !body.username || !body.password) {
+        return json({ error: 'Todos los campos son obligatorios' }, 400)
+      }
+      const hashedPassword = crypto.createHash('sha256').update(body.password).digest('hex')
+      const user = {
+        id: uuidv4(),
+        numeroEmpleado: body.numeroEmpleado,
+        nombre: body.nombre,
+        correo: body.correo,
+        celular: body.celular,
+        username: body.username,
+        password: hashedPassword,
+        role: 'Administrador',
+        createdAt: new Date()
+      }
+      await db.collection('users').insertOne(user)
+      return json({ success: true, user: { id: user.id, username: user.username, nombre: user.nombre, role: user.role } })
+    }
+
+    if (route === '/auth/login' && method === 'POST') {
+      const body = await request.json()
+      if (!body.username || !body.password) {
+        return json({ error: 'Usuario y contraseña son obligatorios' }, 400)
+      }
+      const hashedPassword = crypto.createHash('sha256').update(body.password).digest('hex')
+      const user = await db.collection('users').findOne({ username: body.username, password: hashedPassword })
+      if (!user) {
+        return json({ error: 'Usuario o contraseña incorrectos' }, 400)
+      }
+      return json({ success: true, user: { id: user.id, username: user.username, nombre: user.nombre, role: user.role } })
+    }
+
+    if (route === '/users' && method === 'GET') {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
+      const list = await db.collection('users').find({}).sort({ nombre: 1 }).toArray()
+      return json(list.map(u => {
+        const { password, ...rest } = u
+        return clean(rest)
+      }))
+    }
+
+    if (route === '/users' && method === 'POST') {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
+      const body = await request.json()
+      if (!body.numeroEmpleado || !body.nombre || !body.username || !body.password || !body.role) {
+        return json({ error: 'Nombre, número de empleado, usuario, contraseña y rol son obligatorios' }, 400)
+      }
+      const exists = await db.collection('users').findOne({ username: body.username })
+      if (exists) {
+        return json({ error: 'El nombre de usuario ya está registrado' }, 400)
+      }
+      const hashedPassword = crypto.createHash('sha256').update(body.password).digest('hex')
+      const user = {
+        id: uuidv4(),
+        numeroEmpleado: body.numeroEmpleado,
+        nombre: body.nombre,
+        correo: body.correo || '',
+        celular: body.celular || '',
+        username: body.username,
+        password: hashedPassword,
+        role: body.role,
+        createdAt: new Date()
+      }
+      await db.collection('users').insertOne(user)
+      const { password, ...rest } = user
+      return json(clean(rest))
+    }
+
+    if (route.startsWith('/users/') && method === 'PUT') {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
+      const id = path[1]
+      const body = await request.json()
+      const updates = {
+        numeroEmpleado: body.numeroEmpleado,
+        nombre: body.nombre,
+        correo: body.correo || '',
+        celular: body.celular || '',
+        username: body.username,
+        role: body.role
+      }
+      if (body.password) {
+        updates.password = crypto.createHash('sha256').update(body.password).digest('hex')
+      }
+      await db.collection('users').updateOne({ id }, { $set: updates })
+      const user = await db.collection('users').findOne({ id })
+      const { password, ...rest } = user
+      return json(clean(rest))
+    }
+
+    if (route.startsWith('/users/') && method === 'DELETE') {
+      const auth = await getAuthenticatedUser(db, request)
+      if (!auth || auth.role !== 'Administrador') {
+        return json({ error: 'Acceso no autorizado' }, 403)
+      }
+      const id = path[1]
+      if (id === auth.id) {
+        return json({ error: 'No puedes eliminar tu propio usuario' }, 400)
+      }
+      await db.collection('users').deleteOne({ id })
+      return json({ success: true })
     }
 
     return json({ error: `Route ${route} not found` }, 404)

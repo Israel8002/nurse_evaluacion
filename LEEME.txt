@@ -1,0 +1,30 @@
+=====================================================================
+SISTEMA PORTABLE DE CONTROL Y EVALUACIÓN DE ENFERMERÍA
+=====================================================================
+
+Este es un paquete completamente portátil del sistema. Puedes guardarlo en una memoria USB, disco duro externo o moverlo a cualquier otra computadora con sistema operativo Windows.
+
+---------------------------------------------------------------------
+REQUISITOS
+---------------------------------------------------------------------
+- Sistema Operativo: Windows (7, 8, 10, 11 o superior).
+- No requiere conexión a Internet (funciona de manera local).
+- No requiere instalar Node.js ni MongoDB (vienen incluidos en el paquete).
+
+---------------------------------------------------------------------
+INSTRUCCIONES DE USO
+---------------------------------------------------------------------
+1. Copia la carpeta completa que contiene "node-portable", "mongodb-portable" y "nurse_evaluacion" a la nueva computadora.
+2. Abre la carpeta "nurse_evaluacion" y haz doble clic en el archivo:
+   "iniciar_sistema.bat"
+3. El archivo ejecutará automáticamente la base de datos y el servidor web en segundo plano, y abrirá tu navegador en http://localhost:3000.
+4. Al ejecutarse por primera vez en una computadora nueva (con base de datos limpia), el sistema te pedirá automáticamente completar el "Registro Inicial de Jefatura".
+5. ¡Listo! Puedes capturar datos, empleados y evaluaciones, y generar reportes PDF.
+
+---------------------------------------------------------------------
+CÓMO APAGAR EL SISTEMA
+---------------------------------------------------------------------
+Cuando termines de trabajar:
+1. Regresa a la ventana negra del comando que se abrió en el paso 2.
+2. Presiona cualquier tecla para indicarle al sistema que se apague.
+3. El script apagará automáticamente los servidores de forma segura y se cerrará solo.

@@ -276,15 +276,31 @@ export default function Wizard({ evaluationId, config, onExit }) {
               </div>
               <div className="rounded-lg border border-border bg-secondary/30 p-4">
                 <div className="mb-3 text-sm font-medium">{MONTHS_FULL[attMonth]} {ev.anio} · {daysInMonth(ev.anio, attMonth)} días</div>
-                <div className="grid grid-cols-7 gap-2 sm:grid-cols-10 md:grid-cols-12">
+                <div className="grid grid-cols-7 gap-2">
+                  {/* Cabeceras de los días de la semana */}
+                  {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, idx) => (
+                    <div key={idx} className="text-center text-[10px] font-bold text-muted-foreground py-1 bg-secondary/50 rounded select-none">
+                      {d}
+                    </div>
+                  ))}
+                  {/* Celdas vacías para alinear el día 1 de acuerdo al día de la semana */}
+                  {Array.from({
+                    length: (() => {
+                      const dayVal = new Date(ev.anio, attMonth, 1).getDay();
+                      return dayVal === 0 ? 6 : dayVal - 1;
+                    })()
+                  }).map((_, idx) => (
+                    <div key={`offset-${idx}`} className="h-9" />
+                  ))}
+                  {/* Días del mes */}
                   {Array.from({ length: daysInMonth(ev.anio, attMonth) }, (_, i) => i + 1).map((day) => {
                     const code = ev.attendance?.[attMonth]?.[day] || ''
                     return (
                       <Popover key={day}>
                         <PopoverTrigger asChild>
-                          <button className={cn('flex flex-col items-center rounded-md border p-1 transition-colors', ATT_COLORS[code])}>
-                            <span className="text-[10px] opacity-70">{day}</span>
-                            <span className="text-xs font-bold leading-none h-3">{code || '·'}</span>
+                          <button className={cn('flex flex-col items-center justify-center rounded-md border p-1 h-9 transition-colors', ATT_COLORS[code])}>
+                            <span className="text-[9px] opacity-75 leading-none mb-0.5">{day}</span>
+                            <span className="text-xs font-bold leading-none">{code || '·'}</span>
                           </button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-2">

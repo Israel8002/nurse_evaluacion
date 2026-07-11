@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { HORARIOS } from '@/lib/evalConfig'
 import Wizard from '@/components/eval/Wizard'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -33,36 +33,226 @@ const NAV = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'evaluaciones', label: 'Evaluaciones', icon: ClipboardList },
   { key: 'empleados', label: 'Empleados', icon: Users },
+  { key: 'usuarios', label: 'Usuarios', icon: ShieldCheck, jefaturaOnly: true },
   { key: 'configuracion', label: 'Configuración', icon: Settings, jefaturaOnly: true },
 ]
 
 export default function App() {
   const [view, setView] = useState('dashboard')
-  const [role, setRole] = useState('jefatura')
+  const [currentUser, setCurrentUser] = useState(null)
+  const [registered, setRegistered] = useState(false)
+  const [loadingStatus, setLoadingStatus] = useState(true)
+
   const [config, setConfig] = useState(null)
   const [employees, setEmployees] = useState([])
   const [evaluations, setEvaluations] = useState([])
   const [dashboard, setDashboard] = useState(null)
   const [activeEval, setActiveEval] = useState(null)
 
-  useEffect(() => {
-    const r = typeof window !== 'undefined' ? localStorage.getItem('role') : null
-    if (r) setRole(r)
-  }, [])
-  useEffect(() => {
-    if (typeof window !== 'undefined') localStorage.setItem('role', role)
-  }, [role])
+  // Login form state
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' })
+  const [loggingIn, setLoggingIn] = useState(false)
 
-  const loadConfig = useCallback(() => fetch('/api/config').then((r) => r.json()).then(setConfig), [])
+  // Registration wizard state
+  const [regStep, setRegStep] = useState(1)
+  const [regForm, setRegForm] = useState({
+    numeroEmpleado: '',
+    nombre: '',
+    correo: '',
+    celular: '',
+    username: '',
+    password: ''
+  })
+  const [registering, setRegistering] = useState(false)
+
+  const checkStatus = useCallback(async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    try {
+      const res = await fetch('/api/auth/status', {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setRegistered(data.registered)
+        if (data.user) {
+          setCurrentUser(data.user)
+        } else {
+          setCurrentUser(null)
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingStatus(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    checkStatus()
+  }, [checkStatus])
+
+  const handleLogin = async () => {
+    if (!loginForm.username || !loginForm.password) {
+      toast.error('Ingresa usuario y contraseña')
+      return
+    }
+    setLoggingIn(true)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm)
+      })
+      if (res.ok) {
+        const data = await res.json()
+        localStorage.setItem('token', data.user.id)
+        setCurrentUser(data.user)
+        toast.success('Sesión iniciada')
+      } else {
+        const err = await res.json()
+        toast.error(err.error || 'Credenciales inválidas')
+      }
+    } finally {
+      setLoggingIn(false)
+    }
+  }
+
+  const handleRegister = async () => {
+    if (regStep === 1) {
+      if (!regForm.numeroEmpleado || !regForm.nombre || !regForm.correo || !regForm.celular) {
+        toast.error('Todos los campos son obligatorios')
+        return
+      }
+      setRegStep(2)
+      return
+    }
+    
+    if (!regForm.username || !regForm.password) {
+      toast.error('Ingresa un usuario y contraseña')
+      return
+    }
+    
+    setRegistering(true)
+    try {
+      const res = await fetch('/api/auth/register-initial', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(regForm)
+      })
+      if (res.ok) {
+        const data = await res.json()
+        localStorage.setItem('token', data.user.id)
+        setCurrentUser(data.user)
+        setRegistered(true)
+        toast.success('Registro inicial completado')
+      } else {
+        const err = await res.json()
+        toast.error(err.error || 'Error en el registro')
+      }
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    setCurrentUser(null)
+    setView('dashboard')
+    toast.success('Sesión cerrada')
+  }
+
+  const loadConfig = useCallback(() => {
+    const token = localStorage.getItem('token')
+    return fetch('/api/config', { headers: { 'Authorization': `Bearer ${token}` } }).then((r) => r.json()).then(setConfig)
+  }, [])
   const loadEmployees = useCallback(() => fetch('/api/employees').then((r) => r.json()).then(setEmployees), [])
   const loadEvaluations = useCallback(() => fetch('/api/evaluations').then((r) => r.json()).then(setEvaluations), [])
   const loadDashboard = useCallback(() => fetch('/api/dashboard').then((r) => r.json()).then(setDashboard), [])
 
   useEffect(() => {
-    loadConfig(); loadEmployees(); loadEvaluations(); loadDashboard()
-  }, [loadConfig, loadEmployees, loadEvaluations, loadDashboard])
+    if (currentUser) {
+      loadConfig(); loadEmployees(); loadEvaluations(); loadDashboard()
+    }
+  }, [currentUser, loadConfig, loadEmployees, loadEvaluations, loadDashboard])
 
   const refreshAll = () => { loadEvaluations(); loadDashboard(); loadEmployees() }
+
+  if (loadingStatus) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <div className="text-center space-y-2">
+          <Activity className="h-8 w-8 animate-spin text-primary mx-auto" />
+          <p className="text-sm text-muted-foreground">Cargando sistema...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!registered) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground p-4">
+        <Toaster position="top-right" richColors />
+        <Card className="w-full max-w-md bg-card">
+          <CardHeader>
+            <CardTitle className="text-xl text-center">Registro Inicial de Jefatura</CardTitle>
+            <CardDescription className="text-center">
+              Registra los datos del Jefe de Enfermería (Administrador del sistema)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {regStep === 1 ? (
+              <>
+                <div><Label className="mb-1.5 block">Nombre Completo</Label><Input value={regForm.nombre} onChange={(e) => setRegForm({ ...regForm, nombre: e.target.value })} placeholder="Ej. Lic. María López" /></div>
+                <div><Label className="mb-1.5 block">Número de Empleado</Label><Input value={regForm.numeroEmpleado} onChange={(e) => setRegForm({ ...regForm, numeroEmpleado: e.target.value })} placeholder="Ej. 12345" /></div>
+                <div><Label className="mb-1.5 block">Correo Electrónico</Label><Input type="email" value={regForm.correo} onChange={(e) => setRegForm({ ...regForm, correo: e.target.value })} placeholder="jefa@correo.com" /></div>
+                <div><Label className="mb-1.5 block">Teléfono Celular</Label><Input value={regForm.celular} onChange={(e) => setRegForm({ ...regForm, celular: e.target.value })} placeholder="Ej. 6861234567" /></div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground mb-2">Define las credenciales para ingresar al sistema:</p>
+                <div><Label className="mb-1.5 block">Usuario (Login)</Label><Input value={regForm.username} onChange={(e) => setRegForm({ ...regForm, username: e.target.value })} placeholder="Ej. maria_lopez" /></div>
+                <div><Label className="mb-1.5 block">Contraseña</Label><Input type="password" value={regForm.password} onChange={(e) => setRegForm({ ...regForm, password: e.target.value })} placeholder="••••••••" /></div>
+              </>
+            )}
+          </CardContent>
+          <CardFooter className="flex justify-between">
+            {regStep === 2 && <Button variant="outline" onClick={() => setRegStep(1)}>Atrás</Button>}
+            <Button className="ml-auto" onClick={handleRegister} disabled={registering}>
+              {regStep === 1 ? 'Siguiente' : (registering ? 'Registrando...' : 'Finalizar Registro')}
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground p-4">
+        <Toaster position="top-right" richColors />
+        <Card className="w-full max-w-sm bg-card">
+          <CardHeader>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary mb-3">
+              <Stethoscope className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <CardTitle className="text-xl text-center">Iniciar Sesión</CardTitle>
+            <CardDescription className="text-center">
+              Ingresa tus credenciales para acceder al sistema
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div><Label className="mb-1.5 block">Usuario</Label><Input value={loginForm.username} onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} /></div>
+            <div><Label className="mb-1.5 block">Contraseña</Label><Input type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} /></div>
+          </CardContent>
+          <CardFooter>
+            <Button className="w-full" onClick={handleLogin} disabled={loggingIn}>
+              {loggingIn ? 'Ingresando...' : 'Iniciar Sesión'}
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    )
+  }
 
   // ---- Wizard view ----
   if (activeEval) {
@@ -80,7 +270,7 @@ export default function App() {
     )
   }
 
-  const isJefatura = role === 'jefatura'
+  const isJefatura = currentUser?.role === 'Administrador'
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -116,17 +306,14 @@ export default function App() {
             )
           })}
         </nav>
-        <div className="border-t border-sidebar-border p-3">
-          <Label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" /> Rol actual
-          </Label>
-          <Select value={role} onValueChange={setRole}>
-            <SelectTrigger className="h-9 bg-secondary text-sm"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="jefatura">Jefatura de Enfermería</SelectItem>
-              <SelectItem value="supervisor">Supervisor de Enfermería</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="border-t border-sidebar-border p-3 space-y-2">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold text-foreground truncate">{currentUser?.nombre}</span>
+            <span className="text-[10px] text-muted-foreground truncate">{currentUser?.role === 'Administrador' ? 'Jefatura (Administrador)' : 'Usuario normal'}</span>
+          </div>
+          <Button variant="outline" size="sm" className="w-full text-xs h-8 text-red-400 hover:text-red-300 hover:bg-destructive/10" onClick={handleLogout}>
+            Cerrar Sesión
+          </Button>
         </div>
       </aside>
 
@@ -140,6 +327,9 @@ export default function App() {
               {n.label}
             </button>
           ))}
+          <button onClick={handleLogout} className="whitespace-nowrap rounded-md px-3 py-1.5 text-xs bg-destructive/10 text-red-400">
+            Salir
+          </button>
         </div>
 
         <div className="p-4 md:p-8">
@@ -152,6 +342,9 @@ export default function App() {
           )}
           {view === 'empleados' && (
             <Empleados employees={employees} refresh={loadEmployees} isJefatura={isJefatura} />
+          )}
+          {view === 'usuarios' && isJefatura && (
+            <Usuarios currentUser={currentUser} refresh={refreshAll} />
           )}
           {view === 'configuracion' && isJefatura && (
             <Configuracion config={config} refresh={loadConfig} />
@@ -250,7 +443,11 @@ function Evaluaciones({ evaluations, employees, config, isJefatura, onOpen, refr
   }
 
   const del = async (id) => {
-    await fetch(`/api/evaluations/${id}`, { method: 'DELETE' })
+    const token = localStorage.getItem('token')
+    await fetch(`/api/evaluations/${id}`, {
+      method: 'DELETE',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    })
     toast.success('Evaluación eliminada'); refresh()
   }
 
@@ -385,7 +582,14 @@ function Empleados({ employees, refresh, isJefatura }) {
     }
     setOpen(false); refresh()
   }
-  const del = async (id) => { await fetch(`/api/employees/${id}`, { method: 'DELETE' }); toast.success('Empleado eliminado'); refresh() }
+  const del = async (id) => {
+    const token = localStorage.getItem('token')
+    await fetch(`/api/employees/${id}`, {
+      method: 'DELETE',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    })
+    toast.success('Empleado eliminado'); refresh()
+  }
 
   return (
     <div className="space-y-5">
@@ -479,12 +683,35 @@ function Configuracion({ config, refresh }) {
 
   const save = async () => {
     setSaving(true)
+    const token = localStorage.getItem('token')
     try {
-      await fetch('/api/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      await fetch('/api/config', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(form)
+      })
       toast.success('Configuración guardada'); refresh()
     } finally { setSaving(false) }
   }
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.type !== 'image/png' && file.type !== 'image/jpeg' && file.type !== 'image/jpg') {
+        toast.error('El logotipo debe ser en formato PNG o JPG/JPEG')
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        set('logo', event.target.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   return (
     <div className="space-y-5 max-w-3xl">
@@ -502,7 +729,18 @@ function Configuracion({ config, refresh }) {
           <div><Label className="mb-1.5 block">Jefatura de Enfermería</Label><Input value={form.jefatura || ''} onChange={(e) => set('jefatura', e.target.value)} /></div>
           <div><Label className="mb-1.5 block">Año Vigente</Label><Input type="number" value={form.anio || ''} onChange={(e) => set('anio', Number(e.target.value))} /></div>
           <div><Label className="mb-1.5 block">Prefijo del Folio</Label><Input value={form.prefijoFolio || ''} onChange={(e) => set('prefijoFolio', e.target.value.toUpperCase())} placeholder="HGE" /></div>
-          <div className="sm:col-span-2"><Label className="mb-1.5 block">URL del Logotipo (opcional)</Label><Input value={form.logo || ''} onChange={(e) => set('logo', e.target.value)} placeholder="https://..." /></div>
+          <div className="sm:col-span-2 space-y-2">
+            <Label className="mb-1.5 block">Logotipo (formato PNG o JPG/JPEG)</Label>
+            <div className="flex flex-wrap items-center gap-4">
+              <Input type="file" accept="image/png, image/jpeg, image/jpg" onChange={handleFileChange} className="max-w-xs cursor-pointer" />
+              {form.logo && (
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary/30 p-2">
+                  <img src={form.logo} alt="Logotipo" className="h-10 w-auto object-contain bg-white rounded border p-0.5" />
+                  <Button type="button" variant="destructive" size="sm" onClick={() => set('logo', '')}>Eliminar</Button>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -518,6 +756,181 @@ function Configuracion({ config, refresh }) {
       </Card>
 
       <Button onClick={save} disabled={saving}>{saving ? 'Guardando…' : 'Guardar Configuración'}</Button>
+    </div>
+  )
+}
+
+/* ---------------- USUARIOS ---------------- */
+function Usuarios({ currentUser, refresh }) {
+  const empty = { nombre: '', numeroEmpleado: '', correo: '', celular: '', username: '', password: '', role: 'Usuario normal' }
+  const [users, setUsers] = useState([])
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState(empty)
+  const [editId, setEditId] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const loadUsers = useCallback(async () => {
+    const token = localStorage.getItem('token')
+    const res = await fetch('/api/users', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      setUsers(data)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadUsers()
+  }, [loadUsers])
+
+  const openNew = () => { setForm(empty); setEditId(null); setOpen(true) }
+  const openEdit = (u) => { setForm({ nombre: u.nombre, numeroEmpleado: u.numeroEmpleado, correo: u.correo || '', celular: u.celular || '', username: u.username, password: '', role: u.role }); setEditId(u.id); setOpen(true) }
+
+  const save = async () => {
+    if (!form.nombre || !form.numeroEmpleado || !form.username || (!editId && !form.password)) {
+      toast.error('Nombre, número de empleado, usuario y contraseña son obligatorios')
+      return
+    }
+    setLoading(true)
+    const token = localStorage.getItem('token')
+    try {
+      const method = editId ? 'PUT' : 'POST'
+      const url = editId ? `/api/users/${editId}` : '/api/users'
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(form)
+      })
+      if (res.ok) {
+        toast.success(editId ? 'Usuario actualizado' : 'Usuario creado')
+        setOpen(false)
+        loadUsers()
+      } else {
+        const err = await res.json()
+        toast.error(err.error || 'Error al guardar usuario')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const del = async (id) => {
+    if (id === currentUser.id) {
+      toast.error('No puedes eliminar tu propio usuario')
+      return
+    }
+    const token = localStorage.getItem('token')
+    const res = await fetch(`/api/users/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (res.ok) {
+      toast.success('Usuario eliminado')
+      loadUsers()
+    } else {
+      toast.error('Error al eliminar usuario')
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Usuarios y Permisos</h1>
+          <p className="text-sm text-muted-foreground">Gestión de usuarios y sus niveles de acceso</p>
+        </div>
+        <Button onClick={openNew}><Plus className="mr-1 h-4 w-4" />Nuevo Usuario</Button>
+      </div>
+
+      <Card className="bg-card">
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nombre</TableHead>
+                <TableHead>No. Empleado</TableHead>
+                <TableHead>Usuario</TableHead>
+                <TableHead>Contacto</TableHead>
+                <TableHead>Rol / Permiso</TableHead>
+                <TableHead className="text-right">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.length ? users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium">{u.nombre}</TableCell>
+                  <TableCell>{u.numeroEmpleado}</TableCell>
+                  <TableCell className="font-mono text-xs">{u.username}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    <div>{u.correo}</div>
+                    <div>{u.celular}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={u.role === 'Administrador' ? 'default' : 'secondary'} className={u.role === 'Administrador' ? 'bg-indigo-600 hover:bg-indigo-600' : ''}>
+                      {u.role}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="icon" variant="ghost" onClick={() => openEdit(u)}><Pencil className="h-4 w-4" /></Button>
+                      {u.id !== currentUser.id && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="text-red-400"><Trash2 className="h-4 w-4" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Eliminar usuario?</AlertDialogTitle>
+                              <AlertDialogDescription>Se eliminará a {u.nombre} del sistema.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => del(u.id)} className="bg-red-600 hover:bg-red-500">Eliminar</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )) : (
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No hay usuarios registrados.</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editId ? 'Editar' : 'Nuevo'} Usuario</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div><Label className="mb-1.5 block">Nombre Completo</Label><Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} /></div>
+            <div><Label className="mb-1.5 block">Número de Empleado</Label><Input value={form.numeroEmpleado} onChange={(e) => setForm({ ...form, numeroEmpleado: e.target.value })} /></div>
+            <div><Label className="mb-1.5 block">Correo Electrónico</Label><Input type="email" value={form.correo} onChange={(e) => setForm({ ...form, correo: e.target.value })} /></div>
+            <div><Label className="mb-1.5 block">Teléfono Celular</Label><Input value={form.celular} onChange={(e) => setForm({ ...form, celular: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="mb-1.5 block">Usuario (Login)</Label><Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></div>
+              <div><Label className="mb-1.5 block">Contraseña {editId && '(dejar en blanco para no cambiar)'}</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
+            </div>
+            <div>
+              <Label className="mb-1.5 block">Rol / Permisos</Label>
+              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Administrador">Administrador</SelectItem>
+                  <SelectItem value="Usuario normal">Usuario normal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter><Button onClick={save} disabled={loading}>{loading ? 'Guardando...' : 'Guardar'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
